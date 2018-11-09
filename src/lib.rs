@@ -106,6 +106,12 @@ impl<T: ?Sized> AtomicRefCell<T> {
     pub fn as_ptr(&self) -> *mut T {
         self.value.get()
     }
+
+    /// Returns a mutable reference to the wrapped value.
+    #[inline]
+    pub fn get_mut(&mut self) -> &mut T {
+        unsafe { &mut *self.value.get() }
+    }
 }
 
 //
