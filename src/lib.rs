@@ -110,6 +110,7 @@ impl<T: ?Sized> AtomicRefCell<T> {
     /// Returns a mutable reference to the wrapped value.
     #[inline]
     pub fn get_mut(&mut self) -> &mut T {
+        debug_assert!(self.borrow.load(atomic::Ordering::Acquire) == 0);
         unsafe { &mut *self.value.get() }
     }
 }
