@@ -306,6 +306,17 @@ impl<'b, T: ?Sized> AtomicRef<'b, T> {
             borrow: orig.borrow,
         }
     }
+
+    /// Make a new `AtomicRef` for an optional component of the borrowed data.
+    #[inline]
+    pub fn filter_map<U: ?Sized, F>(orig: AtomicRef<'b, T>, f: F) -> Option<AtomicRef<'b, U>>
+        where F: FnOnce(&T) -> Option<&U>
+    {
+        Some(AtomicRef {
+            value: f(orig.value)?,
+            borrow: orig.borrow,
+        })
+    }
 }
 
 impl<'b, T: ?Sized> AtomicRefMut<'b, T> {
@@ -319,6 +330,17 @@ impl<'b, T: ?Sized> AtomicRefMut<'b, T> {
             value: f(orig.value),
             borrow: orig.borrow,
         }
+    }
+
+    /// Make a new `AtomicRefMut` for an optional component of the borrowed data.
+    #[inline]
+    pub fn filter_map<U: ?Sized, F>(orig: AtomicRefMut<'b, T>, f: F) -> Option<AtomicRefMut<'b, U>>
+        where F: FnOnce(&mut T) -> Option<&mut U>
+    {
+        Some(AtomicRefMut {
+            value: f(orig.value)?,
+            borrow: orig.borrow,
+        })
     }
 }
 
