@@ -75,7 +75,7 @@ impl<T> AtomicRefCell<T> {
     #[inline]
     pub fn into_inner(self) -> T {
         debug_assert!(self.borrow.load(atomic::Ordering::Acquire) == 0);
-        unsafe { self.value.into_inner() }
+        self.value.into_inner()
     }
 }
 
