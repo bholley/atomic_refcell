@@ -83,18 +83,24 @@ impl<T: ?Sized> AtomicRefCell<T> {
     /// Immutably borrows the wrapped value.
     #[inline]
     pub fn borrow(&self) -> AtomicRef<T> {
+        // Note: make sure the panic-check here happens before the reference to the inner value
+        // gets created, to make sure this is not UB.
+        let borrow = AtomicBorrowRef::new(&self.borrow);
         AtomicRef {
             value: unsafe { &*self.value.get() },
-            borrow: AtomicBorrowRef::new(&self.borrow),
+            borrow: borrow,
         }
     }
 
     /// Mutably borrows the wrapped value.
     #[inline]
     pub fn borrow_mut(&self) -> AtomicRefMut<T> {
+        // Note: make sure the panic-check here happens before the reference to the inner value
+        // gets created, to make sure this is not UB.
+        let borrow = AtomicBorrowRefMut::new(&self.borrow);
         AtomicRefMut {
             value: unsafe { &mut *self.value.get() },
-            borrow: AtomicBorrowRefMut::new(&self.borrow),
+            borrow: borrow,
         }
     }
 
