@@ -88,7 +88,7 @@ impl<T: ?Sized> AtomicRefCell<T> {
         let borrow = AtomicBorrowRef::new(&self.borrow);
         AtomicRef {
             value: unsafe { &*self.value.get() },
-            borrow: borrow,
+            borrow,
         }
     }
 
@@ -100,7 +100,7 @@ impl<T: ?Sized> AtomicRefCell<T> {
         let borrow = AtomicBorrowRefMut::new(&self.borrow);
         AtomicRefMut {
             value: unsafe { &mut *self.value.get() },
-            borrow: borrow,
+            borrow,
         }
     }
 
