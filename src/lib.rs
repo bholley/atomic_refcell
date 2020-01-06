@@ -44,16 +44,17 @@
 //! have been removed. We segment the concurrency logic from the rest of the code to
 //! keep the tricky parts small and easy to audit.
 
+#![no_std]
 #![allow(unsafe_code)]
 #![deny(missing_docs)]
 
-use std::cell::UnsafeCell;
-use std::cmp;
-use std::fmt;
-use std::fmt::Debug;
-use std::ops::{Deref, DerefMut};
-use std::sync::atomic;
-use std::sync::atomic::AtomicUsize;
+use core::cell::UnsafeCell;
+use core::cmp;
+use core::fmt;
+use core::fmt::Debug;
+use core::ops::{Deref, DerefMut};
+use core::sync::atomic;
+use core::sync::atomic::AtomicUsize;
 
 /// A threadsafe analogue to RefCell.
 pub struct AtomicRefCell<T: ?Sized> {
@@ -128,7 +129,7 @@ impl<T: ?Sized> AtomicRefCell<T> {
 // Core synchronization logic. Keep this section small and easy to audit.
 //
 
-const HIGH_BIT: usize = !(::std::usize::MAX >> 1);
+const HIGH_BIT: usize = !(::core::usize::MAX >> 1);
 const MAX_FAILED_BORROWS: usize = HIGH_BIT + (HIGH_BIT >> 1);
 
 struct AtomicBorrowRef<'b> {
@@ -169,8 +170,22 @@ impl<'b> AtomicBorrowRef<'b> {
             //
             // This requires billions of threads to have panicked already, and
             // so will never happen in a real program.
-            println!("Too many failed borrows");
-            ::std::process::exit(1);
+            //
+            // To avoid a potential unsound state after overflowing, we make
+            // sure the entire process aborts by making this thread panic
+            // during the unwinding of another panic.
+            //
+            // On platforms where the panic strategy is already 'abort', the
+            // ForceAbort object here has no effect, as the program already
+            // panics before it is dropped.
+            struct ForceAbort;
+            impl Drop for ForceAbort {
+                fn drop(&mut self) {
+                    panic!("Aborting to avoid unsound state of AtomicRefCell");
+                }
+            }
+            let _abort = ForceAbort;
+            panic!("Too many failed borrows");
         } else {
             // This is the normal case, and the only one which should happen
             // in a real program.
