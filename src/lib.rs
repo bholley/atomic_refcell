@@ -172,7 +172,11 @@ impl<'b> AtomicBorrowRef<'b> {
             // so will never happen in a real program.
             //
             // To avoid a potential unsound state after overflowing, we make
-            // sure the entire process aborts by making this thread panic
+            // sure the entire process aborts.
+            //
+            // Right now, there's no stable way to do that without `std`:
+            // https://github.com/rust-lang/rust/issues/67952
+            // As a workaround, we cause an abort by making this thread panic
             // during the unwinding of another panic.
             //
             // On platforms where the panic strategy is already 'abort', the
