@@ -64,7 +64,7 @@ pub struct AtomicRefCell<T: ?Sized> {
 impl<T> AtomicRefCell<T> {
     /// Creates a new `AtomicRefCell` containing `value`.
     #[inline]
-    pub fn new(value: T) -> AtomicRefCell<T> {
+    pub const fn new(value: T) -> AtomicRefCell<T> {
         AtomicRefCell {
             borrow: AtomicUsize::new(0),
             value: UnsafeCell::new(value),
