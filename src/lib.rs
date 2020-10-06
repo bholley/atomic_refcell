@@ -226,14 +226,25 @@ impl<'b> AtomicBorrowRefMut<'b> {
     fn new(borrow: &'b AtomicUsize) -> AtomicBorrowRefMut<'b> {
         // Use compare-and-swap to avoid corrupting the immutable borrow count
         // on illegal mutable borrows.
-        let old = match borrow.compare_exchange(0, HIGH_BIT, atomic::Ordering::Acquire, atomic::Ordering::Relaxed) {
+        let old = match borrow.compare_exchange(
+            0,
+            HIGH_BIT,
+            atomic::Ordering::Acquire,
+            atomic::Ordering::Relaxed,
+        ) {
             Ok(x) => x,
             Err(x) => x,
         };
-        assert!(old == 0, "already {} borrowed", if old & HIGH_BIT == 0 { "immutably" } else { "mutably" });
-        AtomicBorrowRefMut {
-            borrow: borrow
-        }
+        assert!(
+            old == 0,
+            "already {} borrowed",
+            if old & HIGH_BIT == 0 {
+                "immutably"
+            } else {
+                "mutably"
+            }
+        );
+        AtomicBorrowRefMut { borrow: borrow }
     }
 }
 
@@ -301,7 +312,6 @@ pub struct AtomicRef<'b, T: ?Sized + 'b> {
     borrow: AtomicBorrowRef<'b>,
 }
 
-
 impl<'b, T: ?Sized> Deref for AtomicRef<'b, T> {
     type Target = T;
 
@@ -324,7 +334,8 @@ impl<'b, T: ?Sized> AtomicRef<'b, T> {
     /// Make a new `AtomicRef` for a component of the borrowed data.
     #[inline]
     pub fn map<U: ?Sized, F>(orig: AtomicRef<'b, T>, f: F) -> AtomicRef<'b, U>
-        where F: FnOnce(&T) -> &U
+    where
+        F: FnOnce(&T) -> &U,
     {
         AtomicRef {
             value: f(orig.value),
@@ -335,7 +346,8 @@ impl<'b, T: ?Sized> AtomicRef<'b, T> {
     /// Make a new `AtomicRef` for an optional component of the borrowed data.
     #[inline]
     pub fn filter_map<U: ?Sized, F>(orig: AtomicRef<'b, T>, f: F) -> Option<AtomicRef<'b, U>>
-        where F: FnOnce(&T) -> Option<&U>
+    where
+        F: FnOnce(&T) -> Option<&U>,
     {
         Some(AtomicRef {
             value: f(orig.value)?,
@@ -349,7 +361,8 @@ impl<'b, T: ?Sized> AtomicRefMut<'b, T> {
     /// variant.
     #[inline]
     pub fn map<U: ?Sized, F>(orig: AtomicRefMut<'b, T>, f: F) -> AtomicRefMut<'b, U>
-        where F: FnOnce(&mut T) -> &mut U
+    where
+        F: FnOnce(&mut T) -> &mut U,
     {
         AtomicRefMut {
             value: f(orig.value),
@@ -360,7 +373,8 @@ impl<'b, T: ?Sized> AtomicRefMut<'b, T> {
     /// Make a new `AtomicRefMut` for an optional component of the borrowed data.
     #[inline]
     pub fn filter_map<U: ?Sized, F>(orig: AtomicRefMut<'b, T>, f: F) -> Option<AtomicRefMut<'b, U>>
-        where F: FnOnce(&mut T) -> Option<&mut U>
+    where
+        F: FnOnce(&mut T) -> Option<&mut U>,
     {
         Some(AtomicRefMut {
             value: f(orig.value)?,
@@ -394,7 +408,7 @@ impl<'b, T: ?Sized> DerefMut for AtomicRefMut<'b, T> {
 impl<'b, T: ?Sized + Debug + 'b> Debug for AtomicRef<'b, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.value.fmt(f)
-     }
+    }
 }
 
 impl<'b, T: ?Sized + Debug + 'b> Debug for AtomicRefMut<'b, T> {
