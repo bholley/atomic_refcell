@@ -118,24 +118,9 @@ impl<T: ?Sized> AtomicRefCell<T> {
     /// Immutably borrows the wrapped value.
     #[inline]
     pub fn borrow(&self) -> AtomicRef<T> {
-        // Note: make sure the panic-check here happens before the reference to the inner value
-        // gets created, to make sure this is not UB.
-        let borrow = AtomicBorrowRef::new(&self.borrow);
-        AtomicRef {
-            value: unsafe { &*self.value.get() },
-            borrow,
-        }
-    }
-
-    /// Mutably borrows the wrapped value.
-    #[inline]
-    pub fn borrow_mut(&self) -> AtomicRefMut<T> {
-        // Note: make sure the panic-check here happens before the reference to the inner value
-        // gets created, to make sure this is not UB.
-        let borrow = AtomicBorrowRefMut::new(&self.borrow);
-        AtomicRefMut {
-            value: unsafe { &mut *self.value.get() },
-            borrow,
+        match self.try_borrow() {
+            Ok(borrowed) => borrowed,
+            Err(_) => panic!("already mutably borrowed"),
         }
     }
 
@@ -149,6 +134,18 @@ impl<T: ?Sized> AtomicRefCell<T> {
                 borrow,
             }),
             None => Err(BorrowError { _private: () }),
+        }
+    }
+
+    /// Mutably borrows the wrapped value.
+    #[inline]
+    pub fn borrow_mut(&self) -> AtomicRefMut<T> {
+        // Note: make sure the panic-check here happens before the reference to the inner value
+        // gets created, to make sure this is not UB.
+        let borrow = AtomicBorrowRefMut::new(&self.borrow);
+        AtomicRefMut {
+            value: unsafe { &mut *self.value.get() },
+            borrow,
         }
     }
 
@@ -205,28 +202,18 @@ impl<'b> AtomicBorrowRef<'b> {
         // that on drop from a mutable borrow, the immutable count will be properly
         // set back to zero.
         if new & HIGH_BIT != 0 {
+            // The sanity check will soundly panic if the `AtomicRefCell` has entered
+            // an invalid and unrecoverable state.
+            Self::do_sanity_check(borrow, new);
             None
         } else {
             Some(AtomicBorrowRef { borrow: borrow })
         }
     }
 
-    #[inline]
-    fn new(borrow: &'b AtomicUsize) -> Self {
-        let new = borrow.fetch_add(1, atomic::Ordering::Acquire) + 1;
-
-        // If the new count has the high bit set, panic. The specifics of how
-        // we panic is interesting for soundness, but irrelevant for real programs.
-        if new & HIGH_BIT != 0 {
-            Self::do_panic(borrow, new);
-        }
-
-        AtomicBorrowRef { borrow: borrow }
-    }
-
     #[cold]
     #[inline(never)]
-    fn do_panic(borrow: &'b AtomicUsize, new: usize) {
+    fn do_sanity_check(borrow: &'b AtomicUsize, new: usize) {
         if new == HIGH_BIT {
             // We overflowed into the reserved upper half of the refcount
             // space. Before panicking, decrement the refcount to leave things
@@ -264,10 +251,6 @@ impl<'b> AtomicBorrowRef<'b> {
             }
             let _abort = ForceAbort;
             panic!("Too many failed borrows");
-        } else {
-            // This is the normal case, and the only one which should happen
-            // in a real program.
-            panic!("already mutably borrowed");
         }
     }
 }
@@ -395,7 +378,7 @@ impl<T> From<T> for AtomicRefCell<T> {
 impl<'b> Clone for AtomicBorrowRef<'b> {
     #[inline]
     fn clone(&self) -> AtomicBorrowRef<'b> {
-        AtomicBorrowRef::new(self.borrow)
+        AtomicBorrowRef::try_new(self.borrow).unwrap()
     }
 }
 
