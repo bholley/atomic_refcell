@@ -118,9 +118,12 @@ impl<T: ?Sized> AtomicRefCell<T> {
     /// Immutably borrows the wrapped value.
     #[inline]
     pub fn borrow(&self) -> AtomicRef<T> {
-        match self.try_borrow() {
-            Ok(borrowed) => borrowed,
-            Err(_) => panic!("already mutably borrowed"),
+        match AtomicBorrowRef::try_new(&self.borrow) {
+            Ok(borrow) => AtomicRef {
+                value: unsafe { &*self.value.get() },
+                borrow,
+            },
+            Err(s) => panic!(s),
         }
     }
 
@@ -129,23 +132,23 @@ impl<T: ?Sized> AtomicRefCell<T> {
     #[inline]
     pub fn try_borrow(&self) -> Result<AtomicRef<T>, BorrowError> {
         match AtomicBorrowRef::try_new(&self.borrow) {
-            Some(borrow) => Ok(AtomicRef {
+            Ok(borrow) => Ok(AtomicRef {
                 value: unsafe { &*self.value.get() },
                 borrow,
             }),
-            None => Err(BorrowError { _private: () }),
+            Err(_) => Err(BorrowError { _private: () }),
         }
     }
 
     /// Mutably borrows the wrapped value.
     #[inline]
     pub fn borrow_mut(&self) -> AtomicRefMut<T> {
-        // Note: make sure the panic-check here happens before the reference to the inner value
-        // gets created, to make sure this is not UB.
-        let borrow = AtomicBorrowRefMut::new(&self.borrow);
-        AtomicRefMut {
-            value: unsafe { &mut *self.value.get() },
-            borrow,
+        match AtomicBorrowRefMut::try_new(&self.borrow) {
+            Ok(borrow) => AtomicRefMut {
+                value: unsafe { &mut *self.value.get() },
+                borrow,
+            },
+            Err(s) => panic!(s),
         }
     }
 
@@ -154,11 +157,11 @@ impl<T: ?Sized> AtomicRefCell<T> {
     #[inline]
     pub fn try_borrow_mut(&self) -> Result<AtomicRefMut<T>, BorrowMutError> {
         match AtomicBorrowRefMut::try_new(&self.borrow) {
-            Some(borrow) => Ok(AtomicRefMut {
+            Ok(borrow) => Ok(AtomicRefMut {
                 value: unsafe { &mut *self.value.get() },
                 borrow,
             }),
-            None => Err(BorrowMutError { _private: () }),
+            Err(_) => Err(BorrowMutError { _private: () }),
         }
     }
 
@@ -195,19 +198,21 @@ struct AtomicBorrowRef<'b> {
 
 impl<'b> AtomicBorrowRef<'b> {
     #[inline]
-    fn try_new(borrow: &'b AtomicUsize) -> Option<Self> {
+    fn try_new(borrow: &'b AtomicUsize) -> Result<Self, &'static str> {
         let new = borrow.fetch_add(1, atomic::Ordering::Acquire) + 1;
-
-        // If the new count has the high bit set, return `None`. We're guaranteed
-        // that on drop from a mutable borrow, the immutable count will be properly
-        // set back to zero.
         if new & HIGH_BIT != 0 {
+            // If the new count has the high bit set, that almost certainly
+            // means there's an pre-existing mutable borrow. In that case,
+            // we simply leave the increment as a benign side-effect and
+            // return `Err`. Once the mutable borrow is released, the
+            // count will be reset to zero unconditionally.
+            //
             // The sanity check will soundly panic if the `AtomicRefCell` has entered
             // an invalid and unrecoverable state.
             Self::do_sanity_check(borrow, new);
-            None
+            Err("already mutably borrowed")
         } else {
-            Some(AtomicBorrowRef { borrow: borrow })
+            Ok(AtomicBorrowRef { borrow: borrow })
         }
     }
 
@@ -280,26 +285,7 @@ impl<'b> Drop for AtomicBorrowRefMut<'b> {
 
 impl<'b> AtomicBorrowRefMut<'b> {
     #[inline]
-    fn try_new(borrow: &'b AtomicUsize) -> Option<AtomicBorrowRefMut<'b>> {
-        // Use compare-and-swap to avoid corrupting the immutable borrow count
-        // on illegal mutable borrows.
-        //
-        // Since we don't corrupt the immutable borrow count on an illegal borrow,
-        // it's okay to just return `None` and fail the attempt if it's already
-        // borrowed.
-        match borrow.compare_exchange(
-            0,
-            HIGH_BIT,
-            atomic::Ordering::Acquire,
-            atomic::Ordering::Relaxed,
-        ) {
-            Ok(_) => Some(AtomicBorrowRefMut { borrow }),
-            Err(_) => None,
-        }
-    }
-
-    #[inline]
-    fn new(borrow: &'b AtomicUsize) -> AtomicBorrowRefMut<'b> {
+    fn try_new(borrow: &'b AtomicUsize) -> Result<AtomicBorrowRefMut<'b>, &'static str> {
         // Use compare-and-swap to avoid corrupting the immutable borrow count
         // on illegal mutable borrows.
         let old = match borrow.compare_exchange(
@@ -311,16 +297,14 @@ impl<'b> AtomicBorrowRefMut<'b> {
             Ok(x) => x,
             Err(x) => x,
         };
-        assert!(
-            old == 0,
-            "already {} borrowed",
-            if old & HIGH_BIT == 0 {
-                "immutably"
-            } else {
-                "mutably"
-            }
-        );
-        AtomicBorrowRefMut { borrow: borrow }
+
+        if old == 0 {
+            Ok(AtomicBorrowRefMut { borrow })
+        } else if old & HIGH_BIT == 0 {
+            Err("already immutably borrowed")
+        } else {
+            Err("already mutably borrowed")
+        }
     }
 }
 
