@@ -207,9 +207,10 @@ impl<'b> AtomicBorrowRef<'b> {
             // return `Err`. Once the mutable borrow is released, the
             // count will be reset to zero unconditionally.
             //
-            // The sanity check will soundly panic if the `AtomicRefCell` has entered
-            // an invalid and unrecoverable state.
-            Self::do_sanity_check(borrow, new);
+            // The overflow check here ensures that an unbounded number of
+            // immutable borrows during the scope of one mutable borrow
+            // will soundly trigger a panic (or abort) rather than UB.
+            Self::check_overflow(borrow, new);
             Err("already mutably borrowed")
         } else {
             Ok(AtomicBorrowRef { borrow: borrow })
@@ -218,7 +219,7 @@ impl<'b> AtomicBorrowRef<'b> {
 
     #[cold]
     #[inline(never)]
-    fn do_sanity_check(borrow: &'b AtomicUsize, new: usize) {
+    fn check_overflow(borrow: &'b AtomicUsize, new: usize) {
         if new == HIGH_BIT {
             // We overflowed into the reserved upper half of the refcount
             // space. Before panicking, decrement the refcount to leave things
@@ -230,12 +231,13 @@ impl<'b> AtomicBorrowRef<'b> {
             panic!("too many immutable borrows");
         } else if new >= MAX_FAILED_BORROWS {
             // During the mutable borrow, an absurd number of threads have
-            // incremented the refcount and panicked. To avoid hypothetically
-            // wrapping the refcount, we abort the process once a certain
-            // threshold is reached.
+            // attempted to increment the refcount with immutable borrows.
+            // To avoid hypothetically wrapping the refcount, we abort the
+            // process once a certain threshold is reached.
             //
-            // This requires billions of threads to have panicked already, and
-            // so will never happen in a real program.
+            // This requires billions of borrows to fail during the scope of
+            // one mutable borrow, and so is very unlikely to happen in a real
+            // program.
             //
             // To avoid a potential unsound state after overflowing, we make
             // sure the entire process aborts.
