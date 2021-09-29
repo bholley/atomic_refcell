@@ -123,7 +123,7 @@ impl<T: ?Sized> AtomicRefCell<T> {
                 value: unsafe { &*self.value.get() },
                 borrow,
             },
-            Err(s) => panic!(s),
+            Err(s) => panic!("{}", s),
         }
     }
 
@@ -148,7 +148,7 @@ impl<T: ?Sized> AtomicRefCell<T> {
                 value: unsafe { &mut *self.value.get() },
                 borrow,
             },
-            Err(s) => panic!(s),
+            Err(s) => panic!("{}", s),
         }
     }
 
