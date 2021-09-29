@@ -310,7 +310,7 @@ impl<'b> AtomicBorrowRefMut<'b> {
     }
 }
 
-unsafe impl<T: ?Sized + Send + Sync> Send for AtomicRefCell<T> {}
+unsafe impl<T: ?Sized + Send> Send for AtomicRefCell<T> {}
 unsafe impl<T: ?Sized + Send + Sync> Sync for AtomicRefCell<T> {}
 
 //
