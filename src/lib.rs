@@ -174,6 +174,16 @@ impl<T: ?Sized> AtomicRefCell<T> {
         self.value.get()
     }
 
+    /// Returns a reference to the wrapped value.
+    ///
+    /// No runtime checks take place (unless debug assertions are enabled)
+    /// because this call borrows `AtomicRefCell` mutably at compile-time.
+    #[inline]
+    pub fn get(&mut self) -> &T {
+        debug_assert!(self.borrow.load(atomic::Ordering::Acquire) == 0);
+        unsafe { &*self.value.get() }
+    }
+
     /// Returns a mutable reference to the wrapped value.
     ///
     /// No runtime checks take place (unless debug assertions are enabled)
