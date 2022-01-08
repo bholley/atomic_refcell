@@ -416,6 +416,18 @@ impl<'b, T: ?Sized> AtomicRef<'b, T> {
             borrow: orig.borrow,
         })
     }
+
+    /// Make a new `MappedAtomicRef` using the borrowed data.
+    #[inline]
+    pub fn map_into<U, F>(orig: AtomicRef<'b, T>, f: F) -> MappedAtomicRef<'b, U>
+    where
+        F: FnOnce(&'b T) -> U,
+    {
+        MappedAtomicRef {
+            value: f(orig.value),
+            borrow: orig.borrow,
+        }
+    }
 }
 
 impl<'b, T: ?Sized> AtomicRefMut<'b, T> {
@@ -443,6 +455,18 @@ impl<'b, T: ?Sized> AtomicRefMut<'b, T> {
             borrow: orig.borrow,
         })
     }
+
+    /// Make a new `MappedAtomicRefMut` using the borrowed data.
+    #[inline]
+    pub fn map_into<U, F>(orig: AtomicRefMut<'b, T>, f: F) -> MappedAtomicRefMut<'b, U>
+    where
+        F: FnOnce(&'b mut T) -> U,
+    {
+        MappedAtomicRefMut {
+            value: f(orig.value),
+            borrow: orig.borrow,
+        }
+    }
 }
 
 /// A wrapper type for a mutably borrowed value from an `AtomicRefCell<T>`.
@@ -467,6 +491,71 @@ impl<'b, T: ?Sized> DerefMut for AtomicRefMut<'b, T> {
     }
 }
 
+/// A wraper type for data derived from an immutably borrowed value from an `AtomicRefCell`.
+pub struct MappedAtomicRef<'b, T> {
+    value: T,
+    borrow: AtomicBorrowRef<'b>,
+}
+
+impl<'b, T> Deref for MappedAtomicRef<'b, T> {
+    type Target = T;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.value
+    }
+}
+
+impl<'b, T> MappedAtomicRef<'b, T> {
+    /// Make a new `MappedAtomicRef<T>` using the encapsulated data.
+    #[inline]
+    pub fn map_into<U, F>(orig: MappedAtomicRef<'b, T>, f: F) -> MappedAtomicRef<'b, U>
+    where
+        F: FnOnce(T) -> U,
+    {
+        MappedAtomicRef {
+            value: f(orig.value),
+            borrow: orig.borrow,
+        }
+    }
+}
+
+/// A wraper type for data derived from a mutably borrowed value from an `AtomicRefCell`.
+pub struct MappedAtomicRefMut<'b, T> {
+    value: T,
+    borrow: AtomicBorrowRefMut<'b>,
+}
+
+impl<'b, T> Deref for MappedAtomicRefMut<'b, T> {
+    type Target = T;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.value
+    }
+}
+
+impl<'b, T> DerefMut for MappedAtomicRefMut<'b, T> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.value
+    }
+}
+
+impl<'b, T> MappedAtomicRefMut<'b, T> {
+    /// Make a new `MappedAtomicRefMut<T>` using the encapsulated data.
+    #[inline]
+    pub fn map_into<U, F>(orig: MappedAtomicRefMut<'b, T>, f: F) -> MappedAtomicRefMut<'b, U>
+    where
+        F: FnOnce(T) -> U,
+    {
+        MappedAtomicRefMut {
+            value: f(orig.value),
+            borrow: orig.borrow,
+        }
+    }
+}
+
 impl<'b, T: ?Sized + Debug + 'b> Debug for AtomicRef<'b, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.value.fmt(f)
@@ -474,6 +563,18 @@ impl<'b, T: ?Sized + Debug + 'b> Debug for AtomicRef<'b, T> {
 }
 
 impl<'b, T: ?Sized + Debug + 'b> Debug for AtomicRefMut<'b, T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.value.fmt(f)
+    }
+}
+
+impl<'b, T: Debug + 'b> Debug for MappedAtomicRef<'b, T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.value.fmt(f)
+    }
+}
+
+impl<'b, T: Debug + 'b> Debug for MappedAtomicRefMut<'b, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.value.fmt(f)
     }
