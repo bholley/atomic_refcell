@@ -84,6 +84,25 @@ fn try_interleaved() {
     }
 }
 
+// For Miri to catch issues when calling a function.
+//
+// See how this scenerio affects std::cell::RefCell implementation:
+// https://github.com/rust-lang/rust/issues/63787
+//
+// Also see relevant unsafe code guidelines issue:
+// https://github.com/rust-lang/unsafe-code-guidelines/issues/125
+#[test]
+fn drop_and_borrow_in_fn_call() {
+    fn drop_and_borrow(cell: &AtomicRefCell<Bar>, borrow: AtomicRef<'_, Bar>) {
+        drop(borrow);
+        *cell.borrow_mut() = Bar::default();
+    }
+
+    let a = AtomicRefCell::new(Bar::default());
+    let borrow = a.borrow();
+    drop_and_borrow(&a, borrow);
+}
+
 #[test]
 #[should_panic(expected = "already immutably borrowed")]
 fn immutable_then_mutable() {
