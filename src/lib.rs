@@ -48,7 +48,9 @@ use core::cell::UnsafeCell;
 use core::cmp;
 use core::fmt;
 use core::fmt::{Debug, Display};
+use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
+use core::ptr::NonNull;
 use core::sync::atomic;
 use core::sync::atomic::AtomicUsize;
 
@@ -116,7 +118,7 @@ impl<T: ?Sized> AtomicRefCell<T> {
     pub fn borrow(&self) -> AtomicRef<T> {
         match AtomicBorrowRef::try_new(&self.borrow) {
             Ok(borrow) => AtomicRef {
-                value: unsafe { &*self.value.get() },
+                value: unsafe { NonNull::new_unchecked(self.value.get()) },
                 borrow,
             },
             Err(s) => panic!("{}", s),
@@ -129,7 +131,7 @@ impl<T: ?Sized> AtomicRefCell<T> {
     pub fn try_borrow(&self) -> Result<AtomicRef<T>, BorrowError> {
         match AtomicBorrowRef::try_new(&self.borrow) {
             Ok(borrow) => Ok(AtomicRef {
-                value: unsafe { &*self.value.get() },
+                value: unsafe { NonNull::new_unchecked(self.value.get()) },
                 borrow,
             }),
             Err(_) => Err(BorrowError { _private: () }),
@@ -141,8 +143,9 @@ impl<T: ?Sized> AtomicRefCell<T> {
     pub fn borrow_mut(&self) -> AtomicRefMut<T> {
         match AtomicBorrowRefMut::try_new(&self.borrow) {
             Ok(borrow) => AtomicRefMut {
-                value: unsafe { &mut *self.value.get() },
+                value: unsafe { NonNull::new_unchecked(self.value.get()) },
                 borrow,
+                marker: PhantomData,
             },
             Err(s) => panic!("{}", s),
         }
@@ -154,8 +157,9 @@ impl<T: ?Sized> AtomicRefCell<T> {
     pub fn try_borrow_mut(&self) -> Result<AtomicRefMut<T>, BorrowMutError> {
         match AtomicBorrowRefMut::try_new(&self.borrow) {
             Ok(borrow) => Ok(AtomicRefMut {
-                value: unsafe { &mut *self.value.get() },
+                value: unsafe { NonNull::new_unchecked(self.value.get()) },
                 borrow,
+                marker: PhantomData,
             }),
             Err(_) => Err(BorrowMutError { _private: () }),
         }
@@ -366,16 +370,22 @@ impl<'b> Clone for AtomicBorrowRef<'b> {
 
 /// A wrapper type for an immutably borrowed value from an `AtomicRefCell<T>`.
 pub struct AtomicRef<'b, T: ?Sized + 'b> {
-    value: &'b T,
+    value: NonNull<T>,
     borrow: AtomicBorrowRef<'b>,
 }
+
+// SAFETY: `AtomicRef<'_, T> acts as a reference. `AtomicBorrowRef` is a
+// reference to an atomic.
+unsafe impl<'b, T: ?Sized + 'b> Sync for AtomicRef<'b, T> where for<'a> &'a T: Sync {}
+unsafe impl<'b, T: ?Sized + 'b> Send for AtomicRef<'b, T> where for<'a> &'a T: Send {}
 
 impl<'b, T: ?Sized> Deref for AtomicRef<'b, T> {
     type Target = T;
 
     #[inline]
     fn deref(&self) -> &T {
-        self.value
+        // SAFETY: We hold shared borrow of the value.
+        unsafe { self.value.as_ref() }
     }
 }
 
@@ -396,7 +406,7 @@ impl<'b, T: ?Sized> AtomicRef<'b, T> {
         F: FnOnce(&T) -> &U,
     {
         AtomicRef {
-            value: f(orig.value),
+            value: NonNull::from(f(&*orig)),
             borrow: orig.borrow,
         }
     }
@@ -408,7 +418,7 @@ impl<'b, T: ?Sized> AtomicRef<'b, T> {
         F: FnOnce(&T) -> Option<&U>,
     {
         Some(AtomicRef {
-            value: f(orig.value)?,
+            value: NonNull::from(f(&*orig)?),
             borrow: orig.borrow,
         })
     }
@@ -418,60 +428,75 @@ impl<'b, T: ?Sized> AtomicRefMut<'b, T> {
     /// Make a new `AtomicRefMut` for a component of the borrowed data, e.g. an enum
     /// variant.
     #[inline]
-    pub fn map<U: ?Sized, F>(orig: AtomicRefMut<'b, T>, f: F) -> AtomicRefMut<'b, U>
+    pub fn map<U: ?Sized, F>(mut orig: AtomicRefMut<'b, T>, f: F) -> AtomicRefMut<'b, U>
     where
         F: FnOnce(&mut T) -> &mut U,
     {
         AtomicRefMut {
-            value: f(orig.value),
+            value: NonNull::from(f(&mut *orig)),
             borrow: orig.borrow,
+            marker: PhantomData,
         }
     }
 
     /// Make a new `AtomicRefMut` for an optional component of the borrowed data.
     #[inline]
-    pub fn filter_map<U: ?Sized, F>(orig: AtomicRefMut<'b, T>, f: F) -> Option<AtomicRefMut<'b, U>>
+    pub fn filter_map<U: ?Sized, F>(
+        mut orig: AtomicRefMut<'b, T>,
+        f: F,
+    ) -> Option<AtomicRefMut<'b, U>>
     where
         F: FnOnce(&mut T) -> Option<&mut U>,
     {
         Some(AtomicRefMut {
-            value: f(orig.value)?,
+            value: NonNull::from(f(&mut *orig)?),
             borrow: orig.borrow,
+            marker: PhantomData,
         })
     }
 }
 
 /// A wrapper type for a mutably borrowed value from an `AtomicRefCell<T>`.
 pub struct AtomicRefMut<'b, T: ?Sized + 'b> {
-    value: &'b mut T,
+    value: NonNull<T>,
     borrow: AtomicBorrowRefMut<'b>,
+    // `NonNull` is covariant over `T`, but this is used in place of a mutable
+    // reference so we need to be invariant over `T`.
+    marker: PhantomData<&'b mut T>,
 }
+
+// SAFETY: `AtomicRefMut<'_, T> acts as a mutable reference.
+// `AtomicBorrowRefMut` is a reference to an atomic.
+unsafe impl<'b, T: ?Sized + 'b> Sync for AtomicRefMut<'b, T> where for<'a> &'a mut T: Sync {}
+unsafe impl<'b, T: ?Sized + 'b> Send for AtomicRefMut<'b, T> where for<'a> &'a mut T: Send {}
 
 impl<'b, T: ?Sized> Deref for AtomicRefMut<'b, T> {
     type Target = T;
 
     #[inline]
     fn deref(&self) -> &T {
-        self.value
+        // SAFETY: We hold an exclusive borrow of the value.
+        unsafe { self.value.as_ref() }
     }
 }
 
 impl<'b, T: ?Sized> DerefMut for AtomicRefMut<'b, T> {
     #[inline]
     fn deref_mut(&mut self) -> &mut T {
-        self.value
+        // SAFETY: We hold an exclusive borrow of the value.
+        unsafe { self.value.as_mut() }
     }
 }
 
 impl<'b, T: ?Sized + Debug + 'b> Debug for AtomicRef<'b, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.value.fmt(f)
+        <T as Debug>::fmt(self, f)
     }
 }
 
 impl<'b, T: ?Sized + Debug + 'b> Debug for AtomicRefMut<'b, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.value.fmt(f)
+        <T as Debug>::fmt(self, f)
     }
 }
 
