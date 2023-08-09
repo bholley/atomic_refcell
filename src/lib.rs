@@ -527,6 +527,10 @@ impl<T: Serialize> Serialize for AtomicRefCell<T> {
     where
         S: serde::Serializer,
     {
-        T::serialize(&*self.borrow(), serializer)
+        use serde::ser::Error;
+        match self.try_borrow() {
+            Ok(value) => value.serialize(serializer),
+            Err(_err) => Err(S::Error::custom("already mutably borrowed")),
+        }
     }
 }
