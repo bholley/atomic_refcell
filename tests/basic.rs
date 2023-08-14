@@ -1,5 +1,8 @@
 extern crate atomic_refcell;
 
+#[cfg(feature = "serde")]
+extern crate serde;
+
 use atomic_refcell::{AtomicRef, AtomicRefCell, AtomicRefMut};
 
 #[derive(Debug)]
@@ -172,4 +175,16 @@ fn map_mut() {
     assert_eq!(*d, 44);
     *d = 45;
     assert_eq!(*d, 45);
+}
+
+#[test]
+#[cfg(feature = "serde")]
+fn serde() {
+    let value = 10;
+    let cell = AtomicRefCell::new(value);
+
+    let serialized = serde_json::to_string(&cell).unwrap();
+    let deserialized = serde_json::from_str::<AtomicRefCell<usize>>(&serialized).unwrap();
+
+    assert_eq!(*deserialized.borrow(), value);
 }
