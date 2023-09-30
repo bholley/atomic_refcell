@@ -505,9 +505,24 @@ impl<'b, T: ?Sized + Debug + 'b> Debug for AtomicRefMut<'b, T> {
     }
 }
 
-impl<T: ?Sized + Debug> Debug for AtomicRefCell<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "AtomicRefCell {{ ... }}")
+impl<T: ?Sized + Debug> Debug for AtomicRefCell<T>  {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.try_borrow() {
+            Ok(borrow) => f.debug_struct("AtomicRefCell").field("value", &borrow).finish(),
+            Err(_) => {
+                // The RefCell is mutably borrowed so we can't look at its value
+                // here. Show a placeholder instead.
+                struct BorrowedPlaceholder;
+
+                impl Debug for BorrowedPlaceholder {
+                    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                        f.write_str("<borrowed>")
+                    }
+                }
+
+                f.debug_struct("AtomicRefCell").field("value", &BorrowedPlaceholder).finish()
+            }
+        }
     }
 }
 
