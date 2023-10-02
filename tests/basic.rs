@@ -178,6 +178,26 @@ fn map_mut() {
 }
 
 #[test]
+fn debug_fmt() {
+    let a = AtomicRefCell::new(Foo { u: 42 });
+    assert_eq!(format!("{:?}", a), "AtomicRefCell { value: Foo { u: 42 } }");
+}
+
+#[test]
+fn debug_fmt_borrowed() {
+    let a = AtomicRefCell::new(Foo { u: 42 });
+    let _b = a.borrow();
+    assert_eq!(format!("{:?}", a), "AtomicRefCell { value: Foo { u: 42 } }");
+}
+
+#[test]
+fn debug_fmt_borrowed_mut() {
+    let a = AtomicRefCell::new(Foo { u: 42 });
+    let _b = a.borrow_mut();
+    assert_eq!(format!("{:?}", a), "AtomicRefCell { value: <borrowed> }");
+}
+
+#[test]
 #[cfg(feature = "serde")]
 fn serde() {
     let value = 10;
