@@ -381,8 +381,8 @@ pub struct AtomicRef<'b, T: ?Sized + 'b> {
 
 // SAFETY: `AtomicRef<'_, T> acts as a reference. `AtomicBorrowRef` is a
 // reference to an atomic.
-unsafe impl<'b, T: ?Sized + 'b> Sync for AtomicRef<'b, T> where for<'a> &'a T: Sync {}
-unsafe impl<'b, T: ?Sized + 'b> Send for AtomicRef<'b, T> where for<'a> &'a T: Send {}
+unsafe impl<'b, T: ?Sized> Sync for AtomicRef<'b, T> where for<'a> &'a T: Sync {}
+unsafe impl<'b, T: ?Sized> Send for AtomicRef<'b, T> where for<'a> &'a T: Send {}
 
 impl<'b, T: ?Sized> Deref for AtomicRef<'b, T> {
     type Target = T;
@@ -472,8 +472,8 @@ pub struct AtomicRefMut<'b, T: ?Sized + 'b> {
 
 // SAFETY: `AtomicRefMut<'_, T> acts as a mutable reference.
 // `AtomicBorrowRefMut` is a reference to an atomic.
-unsafe impl<'b, T: ?Sized + 'b> Sync for AtomicRefMut<'b, T> where for<'a> &'a mut T: Sync {}
-unsafe impl<'b, T: ?Sized + 'b> Send for AtomicRefMut<'b, T> where for<'a> &'a mut T: Send {}
+unsafe impl<'b, T: ?Sized> Sync for AtomicRefMut<'b, T> where for<'a> &'a mut T: Sync {}
+unsafe impl<'b, T: ?Sized> Send for AtomicRefMut<'b, T> where for<'a> &'a mut T: Send {}
 
 impl<'b, T: ?Sized> Deref for AtomicRefMut<'b, T> {
     type Target = T;
