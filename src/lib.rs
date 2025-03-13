@@ -396,6 +396,9 @@ impl<'b, T: ?Sized> Deref for AtomicRef<'b, T> {
 
 impl<'b, T: ?Sized> AtomicRef<'b, T> {
     /// Copies an `AtomicRef`.
+    ///
+    /// Like its [std-counterpart](core::cell::Ref::clone), this type does not implement `Clone`
+    /// to not interfere with cloning the contained type.
     #[inline]
     pub fn clone(orig: &AtomicRef<'b, T>) -> AtomicRef<'b, T> {
         AtomicRef {
